@@ -1,47 +1,38 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const allowedOrigin = "https://amanpeace52-wq.github.io"; // your GH Pages origin
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-}
+// ✅ Your GitHub Pages domain
+const ORIGIN = "https://amanpeace52-wq.github.io";
 
 export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    res.status(200).setHeader("Access-Control-Allow-Origin", allowedOrigin);
-    res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    return res.end();
-  }
+  res.setHeader("Access-Control-Allow-Origin", ORIGIN);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method !== "POST") {
-    return res.status(405).setHeader("Access-Control-Allow-Origin", allowedOrigin).send("Method not allowed");
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).end("Method not allowed");
 
   const { mode, dump, energy = "medium" } = req.body || {};
 
-  const system = `You are DayMind AI. Turn messy thoughts into a calm, realistic day plan.
-Mode: ${mode}
+  const systemPrompt = `
+You are DayMind AI.
+Turn messy thoughts into a calm, realistic daily plan.
 
 Rules:
-- Always pick ONE anchor task.
-- Separate actionable items vs noise.
-- Be realistic: if overloaded, reduce scope.
-- Keep language human and supportive.
-- Include assumptions when info is missing.
+- Choose ONE anchor task.
+- Separate action vs noise.
+- Reduce overload.
+- Be kind and human.
 
-Mode rules:
-SECOND_BRAIN: clarity + guilt-free deferral.
-AI_RUN_MY_DAY: bold; propose cancellations/moves; protect at least one focus block.
-MOOD_AWARE: adapt plan + tone to energy (low/medium/high).`;
+Modes:
+SECOND_BRAIN → clarity + guilt-free deferral
+AI_RUN_MY_DAY → bold, cancel or move things
+MOOD_AWARE → adapt plan + tone to energy (${energy})
+`;
 
-  // Use structured JSON output so the UI is consistent. :contentReference[oaicite:3]{index=3}
   const schema = {
     name: "daymind_plan",
     schema: {
@@ -57,13 +48,12 @@ MOOD_AWARE: adapt plan + tone to energy (low/medium/high).`;
           type: "array",
           items: {
             type: "object",
-            additionalProperties: false,
             properties: {
               label: { type: "string" },
               minutes: { type: "number" },
               tasks: { type: "array", items: { type: "string" } }
             },
-            required: ["label","minutes","tasks"]
+            required: ["label", "minutes", "tasks"]
           }
         },
         cancellations: { type: "array", items: { type: "string" } },
@@ -71,20 +61,30 @@ MOOD_AWARE: adapt plan + tone to energy (low/medium/high).`;
           type: "array",
           items: {
             type: "object",
-            additionalProperties: false,
             properties: {
               task: { type: "string" },
               from: { type: "string" },
               to: { type: "string" },
               why: { type: "string" }
             },
-            required: ["task","from","to","why"]
+            required: ["task", "from", "to", "why"]
           }
         },
         tone_note: { type: "string" },
         assumptions: { type: "array", items: { type: "string" } }
       },
-      required: ["anchor_task","must_do","should_do","can_wait","noise","schedule_blocks","cancellations","moves","tone_note","assumptions"]
+      required: [
+        "anchor_task",
+        "must_do",
+        "should_do",
+        "can_wait",
+        "noise",
+        "schedule_blocks",
+        "cancellations",
+        "moves",
+        "tone_note",
+        "assumptions"
+      ]
     }
   };
 
@@ -92,19 +92,14 @@ MOOD_AWARE: adapt plan + tone to energy (low/medium/high).`;
     const response = await client.responses.create({
       model: "gpt-5-mini",
       input: [
-        { role: "system", content: system },
-        { role: "user", content: `User dump:\n${dump}\n\nEnergy: ${energy}` }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: dump }
       ],
       response_format: { type: "json_schema", json_schema: schema }
     });
 
-    const jsonText = response.output_text;
-
-    res.setHeader("Content-Type", "application/json");
-    Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
-    return res.status(200).send(jsonText);
+    res.status(200).json(JSON.parse(response.output_text));
   } catch (e) {
-    Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
-    return res.status(500).send("Server error (check API key + logs).");
+    res.status(500).send("AI error – check OPENAI_API_KEY");
   }
 }
