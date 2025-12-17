@@ -1,19 +1,19 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// ✅ Your GitHub Pages domain
 const ORIGIN = "https://amanpeace52-wq.github.io";
 
 export default async function handler(req, res) {
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  // Preflight
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).end("Method not allowed");
+  if (req.method !== "POST") return res.status(405).send("Method not allowed");
+
+  // ✅ Create client AFTER we know it's a POST
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   const { mode, dump, energy = "medium" } = req.body || {};
 
@@ -74,16 +74,8 @@ MOOD_AWARE → adapt plan + tone to energy (${energy})
         assumptions: { type: "array", items: { type: "string" } }
       },
       required: [
-        "anchor_task",
-        "must_do",
-        "should_do",
-        "can_wait",
-        "noise",
-        "schedule_blocks",
-        "cancellations",
-        "moves",
-        "tone_note",
-        "assumptions"
+        "anchor_task","must_do","should_do","can_wait","noise",
+        "schedule_blocks","cancellations","moves","tone_note","assumptions"
       ]
     }
   };
@@ -98,8 +90,8 @@ MOOD_AWARE → adapt plan + tone to energy (${energy})
       response_format: { type: "json_schema", json_schema: schema }
     });
 
-    res.status(200).json(JSON.parse(response.output_text));
+    return res.status(200).json(JSON.parse(response.output_text));
   } catch (e) {
-    res.status(500).send("AI error – check OPENAI_API_KEY");
+    return res.status(500).send("AI error — check OPENAI_API_KEY + Vercel logs.");
   }
 }
